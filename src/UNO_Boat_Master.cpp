@@ -27,6 +27,8 @@ float smoothedCh3 = 0; // Variable to store smoothed value of ch3
 
 
 //Initialisering for gps og rf
+bool RfConnection = false;
+int failedconnections = 0;
 // Define the pins for AltSoftSerial
 #define GPS_RX_PIN 8
 #define GPS_TX_PIN 7
@@ -91,6 +93,7 @@ void sendValues(int * values, int numValues){
 }
 
 void RFMessage(){
+  bool messageReceived = false;
 // Read data from GPS module
     while (gpsSerial.available() > 0) {
         if (gps.encode(gpsSerial.read())) {
@@ -111,6 +114,28 @@ void RFMessage(){
                 
                 // Wait for LoRa transmission to complete
                 rf95.waitPacketSent();
+                messageReceived = true;
+
+                if(messageReceived){
+                uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+                uint8_t len = sizeof(buf);
+                if (rf95.recv(buf, &len)){
+                 failedconnections = 0;
+                 Serial.print("Got reply: ");
+                 Serial.println((char*)buf);
+                 Serial.print("RSSI: ");
+                 Serial.println(rf95.lastRssi(), DEC);
+                }else{
+                 failedconnections ++;
+                }
+                }
+
+                if(failedconnections > 5){
+                  RfConnection = false;
+                }else{
+                  RfConnection = true;
+                }
+                
             }
         }
     }
@@ -171,27 +196,20 @@ void readPWM(){
   values[0] = mappedch1;
   values[1] = mappedch2;
   values[2] = mappedch3;
-
-/*
-  Serial.print("Switch state = ");
-  Serial.print(values[0]);
-  Serial.print("  ");
-  Serial.print("Throttle value = ");
-  Serial.print(values[1]);
-  Serial.print("  ");
-  Serial.print("Steering value = ");
-  Serial.println(values[2]);
-  Serial.println(ch3);
-*/
-
 }
 
 
 void loop() {
-  readPWM();
-  sendValues(values, numValues);
   RFMessage();
-  delay(50);
+  if(RfConnection){
+    Serial.println("Sending land data to mega");
+  }else{
+    readPWM();
+    sendValues(values, numValues);
+    Serial.println("Sending backup data to mega");
+  }
+  delay(200);  
+
 }
 
 
