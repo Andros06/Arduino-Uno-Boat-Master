@@ -10,6 +10,15 @@ int ch2;
 int ch3;
 int ch4;
 
+//Global state
+int State = 0;
+
+// Backup Connection vars
+int BackupconState = 0;
+int ReadCounter = 0;
+int FilterValue = 0;
+unsigned long readingInterval = 100;
+
 const int numValues = 3;
 int values[numValues];
 
@@ -21,6 +30,7 @@ unsigned long StartTime = 0;
 unsigned long currentTime = 0;
 bool Pulsing = true;
 bool Switch = false;
+bool backupConnectionState = 0;
 
 const float alpha = 0.2; // Smoothing factor (adjust as needed)
 float smoothedCh3 = 0; // Variable to store smoothed value of ch3
@@ -48,6 +58,29 @@ TinyGPSPlus gps; // Create a TinyGPS++ object
 // Singleton instance of the radio driver'
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
+int filterReadAvg(int pin, int interval){
+  int value = 0;
+  for(int i = 0; i<interval; i++){
+    value += pulseIn(pin, HIGH, 25000);
+  }
+  return int(value/interval);
+}
+
+void filterRead(){
+FilterValue += analogRead(A0);
+ReadCounter ++;
+if (ReadCounter > 20){
+  if(FilterValue > 6000){
+    backupConnectionState = true;
+  } else {
+    backupConnectionState = false;
+  }
+  ReadCounter = 0;
+  FilterValue = 0;
+}
+
+
+}
 
 void setup() {
   Serial.begin(9600);
@@ -99,7 +132,7 @@ void RFMessage(){
         if (gps.encode(gpsSerial.read())) {
             if (gps.location.isValid()) {
                 // Prepare GPS data to send over LoRa
-                String gpsData = String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6) + "," + String(Pulsing);
+                String gpsData = String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6) + "," + String(backupConnectionState);
                 
                 // Prepend GPS data with a header to indicate it is GPS data
                 gpsData = "GPS:" + gpsData;
@@ -142,35 +175,45 @@ void RFMessage(){
 
 }
 
+void checkBackupConnection(){
+
+  switch (BackupconState)
+  {
+  case 0 /* constant-expression */:
+  Serial.println("State: 0");
+    if(analogRead(A0) > 200){
+      StartTime = millis();
+      BackupconState = 1;
+    } else {
+      BackupconState = 20;
+    }
+  
+  case 1:
+  Serial.println("State: 1");
+  if (analogRead(A0) < 200){
+    BackupconState = 20;
+  }
+      if(millis() > StartTime+600){
+        backupConnectionState = true;
+      } else {
+        break;
+      }
+  case 20:
+  Serial.println("State: 20");
+    backupConnectionState = false;
+    BackupconState = 0;
+    break;
+  }
+
+}
+
+
 void readPWM(){
   ch1 = pulseIn(3, HIGH, 25000); // Read the pulse width of 
   ch2 = pulseIn(5, HIGH, 25000); // each channel
   ch3 = pulseIn(6, HIGH, 25000);
-  ch4 = analogRead(A0);
 
-  if((ch4 > 300) && !Switch){
-   StartTime = millis();
-   Switch = true;
-  }
-
-  if((ch4 < 200)){
-    Pulsing = true;
-    Switch = false;
-  }
-
-  if(Switch){
-    currentTime = millis();
-    if((currentTime - StartTime) > 500){
-      Pulsing = false;
-  }
-  }
-
-  if(Pulsing){
-    mappedch1 = 0;
-    mappedch2 = 0;
-    mappedch3 = 0;
-  }else{
-
+/*
     mappedch2 = constrain(map(ch2, 2010, 1075, -100, 100), -100, 100);
   //mappedch3 = constrain(map(ch3, 1469, 1575, -100, 100), -100, 100);
   smoothedCh3 = alpha * ch3 + (1 - alpha) * smoothedCh3;
@@ -191,24 +234,53 @@ void readPWM(){
     mappedch3 = 0;
   }
 
-  }
 
   values[0] = mappedch1;
   values[1] = mappedch2;
   values[2] = mappedch3;
+*/
 }
 
 
 void loop() {
+  //checkBackupConnection();
+  switch (State)
+  {
+  case 0 : // Startup
+        StartTime = millis();
+        State = 1;
+    break;
+  case 1: // Check BackupConstate
+        if (millis() > StartTime + readingInterval){
+          filterRead();
+          StartTime = millis();
+        }
+        //RFMessage();
+
+        
+        Serial.print("Steering: "); Serial.println( filterReadAvg(6,5));
+        //Serial.print("Throttle: "); Serial.println( filterReadAvg(5,5));
+        
+
+    break;
+
+  default:
+    break;
+  }
+  //Serial.println(analogRead(A0));
+  //Serial.println(backupConnectionState);
+  /*
   RFMessage();
   if(RfConnection){
     Serial.println("Sending land data to mega");
+    readPWM();
   }else{
     readPWM();
     sendValues(values, numValues);
     Serial.println("Sending backup data to mega");
   }
-  delay(200);  
+  */
+// Serial.println(backupConnectionState);
 
 }
 
