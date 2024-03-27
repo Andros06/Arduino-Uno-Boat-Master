@@ -28,7 +28,6 @@ int mappedch3;
 
 int throttle;
 int brake;
-int RSSI;
 
 unsigned long StartTime = 0;
 unsigned long currentTime = 0;
@@ -156,8 +155,6 @@ void RFMessage(){
                 if(messageReceived){
                 uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
                 uint8_t len = sizeof(buf);
-                
-              
                 if (rf95.recv(buf, &len)){
                   String receivedMessage;
                   for (int i = 0; i < len; i++) {
@@ -165,20 +162,16 @@ void RFMessage(){
                 }
 
                 if (receivedMessage.startsWith("C_Data:")) {
-                 messageReceived = false;
-                 // Extract GPS data from the message
-                 String controllData = receivedMessage.substring(6); // Remove "C_Data" prefix
-                 RSSI = rf95.lastRssi();
-                 failedconnections = 0;
-
-                 int commaIndex = controllData.indexOf(",");
-                 if (commaIndex != -1){
-                 throttle = controllData.substring(0, commaIndex).toInt();
-                 brake = controllData.substring(commaIndex + 1).toInt();
-                }
-                 Serial.println(rf95.lastRssi(), DEC);
-                 Serial.println(throttle);
-                 Serial.println(brake);
+                  messageReceived = false;
+                  // Extract GPS data from the message
+                  String gpsData = receivedMessage.substring(7); // Remove "C_Data" prefix
+                          
+                  int commaIndex = gpsData.indexOf(",");
+                  if (commaIndex != -1){
+                  throttle = gpsData.substring(0, commaIndex).toInt();
+                  brake = gpsData.substring(commaIndex + 1).toInt();
+                  }
+                 
                 }else{
                  failedconnections ++;
                 }
@@ -265,17 +258,16 @@ void readPWM(){
 
 
 void loop() {
-
+  
   RFMessage();
   if(RfConnection){
-    Serial.println("Sending land data to mega");
-    readPWM();
+    Serial.println(throttle);
   }else{
     readPWM();
     sendValues(values, numValues);
     Serial.println("Sending backup data to mega");
   }
-
+  
 // Serial.println(backupConnectionState);
 
 }
