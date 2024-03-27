@@ -26,6 +26,10 @@ int mappedch1;
 int mappedch2;
 int mappedch3;
 
+int throttle;
+int brake;
+int RSSI;
+
 unsigned long StartTime = 0;
 unsigned long currentTime = 0;
 bool Pulsing = true;
@@ -132,7 +136,7 @@ void RFMessage(){
         if (gps.encode(gpsSerial.read())) {
             if (gps.location.isValid()) {
                 // Prepare GPS data to send over LoRa
-                String gpsData = String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6) + "," + String(backupConnectionState);
+                String gpsData = String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6);
                 
                 // Prepend GPS data with a header to indicate it is GPS data
                 gpsData = "GPS:" + gpsData;
@@ -152,12 +156,29 @@ void RFMessage(){
                 if(messageReceived){
                 uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
                 uint8_t len = sizeof(buf);
+                
+              
                 if (rf95.recv(buf, &len)){
+                  String receivedMessage;
+                  for (int i = 0; i < len; i++) {
+                  receivedMessage += (char)buf[i];
+                }
+
+                if (receivedMessage.startsWith("C_Data:")) {
+                 messageReceived = false;
+                 // Extract GPS data from the message
+                 String controllData = receivedMessage.substring(6); // Remove "C_Data" prefix
+                 RSSI = rf95.lastRssi();
                  failedconnections = 0;
-                 Serial.print("Got reply: ");
-                 Serial.println((char*)buf);
-                 Serial.print("RSSI: ");
+
+                 int commaIndex = controllData.indexOf(",");
+                 if (commaIndex != -1){
+                 throttle = controllData.substring(0, commaIndex).toInt();
+                 brake = controllData.substring(commaIndex + 1).toInt();
+                }
                  Serial.println(rf95.lastRssi(), DEC);
+                 Serial.println(throttle);
+                 Serial.println(brake);
                 }else{
                  failedconnections ++;
                 }
@@ -173,6 +194,7 @@ void RFMessage(){
         }
     }
 
+}
 }
 
 void checkBackupConnection(){
@@ -243,33 +265,7 @@ void readPWM(){
 
 
 void loop() {
-  //checkBackupConnection();
-  switch (State)
-  {
-  case 0 : // Startup
-        StartTime = millis();
-        State = 1;
-    break;
-  case 1: // Check BackupConstate
-        if (millis() > StartTime + readingInterval){
-          filterRead();
-          StartTime = millis();
-        }
-        //RFMessage();
 
-        
-        Serial.print("Steering: "); Serial.println( filterReadAvg(6,5));
-        //Serial.print("Throttle: "); Serial.println( filterReadAvg(5,5));
-        
-
-    break;
-
-  default:
-    break;
-  }
-  //Serial.println(analogRead(A0));
-  //Serial.println(backupConnectionState);
-  /*
   RFMessage();
   if(RfConnection){
     Serial.println("Sending land data to mega");
@@ -279,7 +275,7 @@ void loop() {
     sendValues(values, numValues);
     Serial.println("Sending backup data to mega");
   }
-  */
+
 // Serial.println(backupConnectionState);
 
 }
